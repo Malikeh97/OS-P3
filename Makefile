@@ -1,10 +1,10 @@
 all: neuron
 
-neuron: main.cpp util.o
-	g++ main.cpp util.o -o neuron
+neuron: main.cpp thread.o
+	g++ main.cpp thread.o -o neuron -lpthread
 
-util.o: util.cpp util.h
-	g++ -c util.cpp
+thread.o: thread.cpp thread.h
+	g++ -c thread.cpp
 
 clean:
 	rm *.o neuron
