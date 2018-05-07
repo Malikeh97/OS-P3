@@ -22,6 +22,7 @@ int main(int argc, char const *argv[]) {
   }
   create_thread(&neur_out, OUTPUTTHREAD);
 
+  //join all thread to guarantee termination 
   join_thread(&neur_in_getter);
   join_thread(&neur_w_getter);
   for(int i = 0; i < mid_th_num; i++) {
