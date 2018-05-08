@@ -4,10 +4,11 @@
 #include <semaphore.h>
 #include <string>
 #include <vector>
+#include <fstream>
+#include <stdlib.h>
+#include <math.h>
 
 using namespace std;
-
-
 
 #define INPUTTHREAD -1
 #define WEIGHTTHREAD -2
@@ -16,14 +17,22 @@ using namespace std;
 void create_thread(pthread_t *my_thread, int th_type);
 void *routine(void *thread_type);
 void join_thread(pthread_t *my_thread);
+vector<string> split(string statement, char delimeter);
 void input_thread();
-void wait_thread();
+void weight_thread();
 void middle_thread();
 void output_thread();
 
+
 //semaphore_list
 sem_t sem_terminal;
+vector<sem_t> mid_sem;
 
+
+//input arrays
+double bias;
+vector<double> weights(128);
+vector<double> inputs(128);
 
 int main(int argc, char const *argv[]) {
   int mid_th_num;
@@ -38,6 +47,12 @@ int main(int argc, char const *argv[]) {
   }
   mid_th_num = atoi(argv[1]);
   vector<pthread_t> mid_threads(mid_th_num);
+
+  for(int i = 0; i < mid_th_num; i++) {
+    sem_t new_sem;
+    sem_init(&new_sem, 0, 1);
+    mid_sem.push_back(new_sem);
+  }
 
   //create all threads first
   create_thread(&neur_in_getter, INPUTTHREAD);
@@ -104,3 +119,63 @@ void join_thread(pthread_t *my_thread) {
   if (pthread_join(*my_thread, NULL) != 0)
         cout << "ERR:unable to join thread" << endl;
 }
+
+void input_thread() {
+  ifstream in_file("inputs.txt");
+
+}
+
+void weight_thread() {
+  ifstream w_file("inputs.txt");
+  string line;
+  string bias_str;
+  int count = 0;
+  if(w_file.is_open()) {
+    while(getline(w_file, line)) {
+          string token = line.substr(line.find('{')+1);
+          token = token.substr(0,token.find('}'));
+          if((signed)token.find(':')!=-1){
+            bias_str = token.substr(token.find(':')+1);
+            bias = atof (bias_str.c_str());
+            continue;
+          }
+          while(true){
+            string tmp = token.substr(0,token.find(','));
+            double num = atof (tmp.c_str());
+            weights[count] = num;
+            count++;
+            token = token.substr(token.find(',')+1);
+            if((signed)token.find(',') == -1){
+              break;
+            }
+          }
+        }
+  }
+  else {
+    sem_wait (&sem_terminal);
+    cout << "ERR: problem in openin the file" << endl;
+    sem_post (&sem_terminal);
+    exit(-1);
+  }
+}
+
+vector<string> split(string statement, char delimeter) {
+	vector<string> result;
+	string token;
+	for(int i=0; i<statement.length(); i++)
+  {
+    if(statement[i] != delimeter)
+      token += statement[i];
+    else if(token.length()) {
+      result.push_back(token);
+      token = "";
+    }
+  }
+	if(token.length())
+		result.push_back(token);
+
+	return result;
+}
+
+void middle_thread();
+void output_thread();
