@@ -6,6 +6,7 @@
 #include <vector>
 #include <fstream>
 #include <stdlib.h>
+#include <sstream>
 #include <math.h>
 
 using namespace std;
@@ -23,7 +24,7 @@ void input_thread();
 void weight_thread();
 void middle_thread(long th_type);
 void output_thread();
-
+void log(string s);
 
 //semaphore_list
 sem_t sem_terminal;
@@ -31,6 +32,7 @@ sem_t b_sem;
 vector<sem_t> in_mid_sem;
 vector<sem_t> data_r_mid_sem;
 vector<sem_t> w_mid_sem;
+vector<sem_t> comp_done;
 vector<sem_t> out_done;
 
 
@@ -42,6 +44,8 @@ vector<double> inputs(128);
 vector<double> sum_list;
 int mid_th_num;
 int turn = 0;
+bool input_complete = false;
+double result = 0;
 
 int main(int argc, char const *argv[]) {
   pthread_t neur_in_getter;
@@ -81,6 +85,12 @@ int main(int argc, char const *argv[]) {
   }
 
   for(int i = 0; i < mid_th_num; i++) {
+    sem_t new_sem;
+    sem_init(&new_sem, 0, 1);
+    comp_done.push_back(new_sem);
+  }
+
+  for(int i = 0; i < 128; i++) {
     sum_list.push_back(0);
   }
 
@@ -122,7 +132,6 @@ void *routine(void *thread_type) {
      cout << "LOG:Input-getter thread has been created." << endl;
      sem_post (&sem_terminal);
      input_thread();
-
    }
 
    else if(th_type == WEIGHTTHREAD) {
@@ -157,6 +166,7 @@ void join_thread(pthread_t *my_thread) {
 void input_thread() {
   ifstream in_file("inputs.txt");
   string line;
+  double num;
   int count = 0;
   if(in_file.is_open()) {
     getline(in_file, line);
@@ -164,8 +174,18 @@ void input_thread() {
           string token = line.substr(line.find('{')+1);
           token = token.substr(0,token.find('}'));
           while(true){
-            string tmp = token.substr(0,token.find(','));
-            double num = atof (tmp.c_str());
+            if(token.find(',') != -1) {
+              string tmp = token.substr(0,token.find(','));
+              num = atof (tmp.c_str());
+              token = token.substr(token.find(',')+1);
+            }
+           else {
+             string tmp = token;
+             num = atof (tmp.c_str());
+             break;
+           }
+
+
             if((turn != 0) && ((count+1)%(128/mid_th_num)==1))
               sem_wait(&in_mid_sem[(count+1)/(128/mid_th_num)]);
             inputs[count] = num;
@@ -197,6 +217,7 @@ void input_thread() {
 void weight_thread() {
   ifstream w_file("weights.txt");
   string line;
+  double num;
   string bias_str;
   int count = 0;
   if(w_file.is_open()) {
@@ -210,17 +231,25 @@ void weight_thread() {
             continue;
           }
           while(true){
-            string tmp = token.substr(0,token.find(','));
-            double num = atof (tmp.c_str());
+            if(token.find(',') != -1){
+              string tmp = token.substr(0,token.find(','));
+              num = atof (tmp.c_str());
+              token = token.substr(token.find(',')+1);
+            }
+            else{
+              string tmp = token;
+              num = atof (tmp.c_str());
+              break;
+            }
+
             weights[count] = num;
             count++;
             if(count == 127) {
-              sem_post(&in_mid_sem[mid_th_num-1]);
+              sem_post(&w_mid_sem[mid_th_num-1]);
             }
 
             else if((count+1) % (128/mid_th_num) == 0) {
-                sem_post(&in_mid_sem[count/(128/mid_th_num)]);
-
+              sem_post(&w_mid_sem[count/(128/mid_th_num)]);
             }
             token = token.substr(token.find(',')+1);
             if((signed)token.find(',') == -1){
@@ -228,6 +257,7 @@ void weight_thread() {
             }
           }
         }
+        input_complete = true;
   }
   else {
     sem_wait (&sem_terminal);
@@ -261,9 +291,12 @@ void middle_thread(long th_type) {
     if(turn == 0)
       sem_wait(&w_mid_sem[(int)th_type]);
     if((int)th_type != mid_th_num-1) {
+      if(turn != 0)
+        sem_wait(&out_done[(int)th_type]);
       for(int i = (int)th_type * (128/mid_th_num); i < (th_type+1) * (128/mid_th_num); i++) {
         sum_list[(int)th_type] += (weights[i]*inputs[i]);
       }
+      sem_post(&comp_done[(int)th_type]);
       sem_post(&in_mid_sem[(int)th_type]);
       sem_post(&w_mid_sem[(int)th_type]);
     }
@@ -271,13 +304,46 @@ void middle_thread(long th_type) {
       for(int i = (int)th_type * (128/mid_th_num); i < 128; i++) {
         sum_list[(int)th_type] += (weights[i]*inputs[i]);
       }
+      sem_post(&comp_done[(int)th_type]);
       sem_post(&in_mid_sem[(int)th_type]);
       sem_post(&w_mid_sem[(int)th_type]);
     }
+    if(input_complete)
+      break;
   }
 
 }
 void output_thread() {
+while(true) {
+  for(int i = 0; i < mid_th_num; i++) {
+    if(turn != 0)
+      sem_wait(&comp_done[i]);
+    result += sum_list[i];
+    sem_post(&out_done[i]);
+  }
+  if(turn == 0) {
+    sem_wait(&b_sem);
+  }
+  result += bias;
+  for(int i = 0; i < mid_th_num; i++) {
+    sum_list[i] = 0;
+  }
+  ofstream outfile;
+  outfile.open("outputs.txt", ios_base::app);
+  ostringstream strs;
+  strs << result;
+  string str = strs.str();
+  outfile << str << endl;
 
+  result = 0;
+  if(input_complete)
+    break;
+}
 
+}
+
+void log(string s) {
+  sem_wait (&sem_terminal);//test
+  cout << s << endl;//test
+  sem_post (&sem_terminal);//test
 }
