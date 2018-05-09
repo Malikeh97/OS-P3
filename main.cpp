@@ -10,6 +10,8 @@
 
 using namespace std;
 
+#define WAIT 0
+#define READY 1
 #define INPUTTHREAD -1
 #define WEIGHTTHREAD -2
 #define OUTPUTTHREAD -3
@@ -26,20 +28,26 @@ void output_thread();
 
 //semaphore_list
 sem_t sem_terminal;
-vector<sem_t> mid_sem;
+sem_t b_sem;
+vector<sem_t> in_mid_sem;
+vector<sem_t> w_mid_sem;
 
 
 //input arrays
 double bias;
 vector<double> weights(128);
 vector<double> inputs(128);
+vector<int> data_state(128);
+vector<int> weight_state(128);
+int b_ready = WAIT;
+int mid_th_num;
 
 int main(int argc, char const *argv[]) {
-  int mid_th_num;
   pthread_t neur_in_getter;
   pthread_t neur_w_getter;
   pthread_t neur_out;
   sem_init(&sem_terminal, 0, 1);
+  sem_init(&b_sem, 0, 1);
 
   if(argc != 2) {
     cout << "ERR:Invalid arguments passed.Try again!" << endl;
@@ -51,7 +59,17 @@ int main(int argc, char const *argv[]) {
   for(int i = 0; i < mid_th_num; i++) {
     sem_t new_sem;
     sem_init(&new_sem, 0, 1);
-    mid_sem.push_back(new_sem);
+    in_mid_sem.push_back(new_sem);
+  }
+  for(int i = 0; i < mid_th_num; i++) {
+    sem_t new_sem;
+    sem_init(&new_sem, 0, 1);
+    w_mid_sem.push_back(new_sem);
+  }
+
+  for(int i = 0; i < 128; i++) {
+    data_state[i] = WAIT;
+    weight_state[i] = WAIT;
   }
 
   //create all threads first
@@ -122,23 +140,13 @@ void join_thread(pthread_t *my_thread) {
 
 void input_thread() {
   ifstream in_file("inputs.txt");
-
-}
-
-void weight_thread() {
-  ifstream w_file("inputs.txt");
   string line;
-  string bias_str;
   int count = 0;
-  if(w_file.is_open()) {
-    while(getline(w_file, line)) {
+  if(in_file.is_open()) {
+    getline(in_file, line);
+    while(getline(in_file, line)) {
           string token = line.substr(line.find('{')+1);
           token = token.substr(0,token.find('}'));
-          if((signed)token.find(':')!=-1){
-            bias_str = token.substr(token.find(':')+1);
-            bias = atof (bias_str.c_str());
-            continue;
-          }
           while(true){
             string tmp = token.substr(0,token.find(','));
             double num = atof (tmp.c_str());
@@ -153,7 +161,47 @@ void weight_thread() {
   }
   else {
     sem_wait (&sem_terminal);
-    cout << "ERR: problem in openin the file" << endl;
+    cout << "ERR: problem in opening the file" << endl;
+    sem_post (&sem_terminal);
+    exit(-1);
+  }
+}
+
+void weight_thread() {
+  ifstream w_file("weights.txt");
+  string line;
+  string bias_str;
+  int count = 0;
+  if(w_file.is_open()) {
+    while(getline(w_file, line)) {
+          string token = line.substr(line.find('{')+1);
+          token = token.substr(0,token.find('}'));
+          if((signed)token.find(':')!=-1){
+            sem_wait (&b_sem);
+            bias_str = token.substr(token.find(':')+1);
+            bias = atof (bias_str.c_str());
+            b_ready = READY;
+            sem_post(&b_sem);
+            continue;
+          }
+          while(true){
+            string tmp = token.substr(0,token.find(','));
+            double num = atof (tmp.c_str());
+            sem_wait (&w_mid_sem[(count+1)/(128/mid_th_num)]);
+            weights[count] = num;
+            weight_state[count] = READY;
+            sem_post (&w_mid_sem[(count+1)/(128/mid_th_num)]);
+            count++;
+            token = token.substr(token.find(',')+1);
+            if((signed)token.find(',') == -1){
+              break;
+            }
+          }
+        }
+  }
+  else {
+    sem_wait (&sem_terminal);
+    cout << "ERR: problem in opening the file" << endl;
     sem_post (&sem_terminal);
     exit(-1);
   }
