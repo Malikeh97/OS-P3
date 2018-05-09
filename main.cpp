@@ -19,7 +19,6 @@ using namespace std;
 void create_thread(pthread_t *my_thread, int th_type);
 void *routine(void *thread_type);
 void join_thread(pthread_t *my_thread);
-vector<string> split(string statement, char delimeter);
 void input_thread();
 void weight_thread();
 void middle_thread(long th_type);
@@ -46,6 +45,7 @@ int mid_th_num;
 int turn = 0;
 bool input_complete = false;
 double result = 0;
+int t = 0;
 
 int main(int argc, char const *argv[]) {
   pthread_t neur_in_getter;
@@ -90,7 +90,7 @@ int main(int argc, char const *argv[]) {
     comp_done.push_back(new_sem);
   }
 
-  for(int i = 0; i < 128; i++) {
+  for(int i = 0; i < mid_th_num; i++) {
     sum_list.push_back(0);
   }
 
@@ -174,13 +174,17 @@ void input_thread() {
           string token = line.substr(line.find('{')+1);
           token = token.substr(0,token.find('}'));
           while(true){
+            if(t != 0 && count == 0)
+              turn = 1;
             if(token.find(',') != -1) {
               string tmp = token.substr(0,token.find(','));
+              //log(tmp);//test
               num = atof (tmp.c_str());
               token = token.substr(token.find(',')+1);
             }
            else {
              string tmp = token;
+             //log(tmp);//test
              num = atof (tmp.c_str());
              break;
            }
@@ -189,9 +193,6 @@ void input_thread() {
             if((turn != 0) && ((count+1)%(128/mid_th_num)==1))
               sem_wait(&in_mid_sem[(count+1)/(128/mid_th_num)]);
             inputs[count] = num;
-            count = (count+1)%128;
-            if(count == 0)
-              turn = 1;
             if((count+1)%128 == 0) {
               sem_post(&data_r_mid_sem[mid_th_num-1]);
             }
@@ -203,6 +204,8 @@ void input_thread() {
             if((signed)token.find(',') == -1){
               break;
             }
+            count = (count+1)%128;
+            t = 1;
           }
         }
   }
@@ -221,7 +224,7 @@ void weight_thread() {
   string bias_str;
   int count = 0;
   if(w_file.is_open()) {
-    while(getline(w_file, line)) {
+    while(getline(w_file, line)) {//test
           string token = line.substr(line.find('{')+1);
           token = token.substr(0,token.find('}'));
           if((signed)token.find(':')!=-1){
@@ -267,23 +270,6 @@ void weight_thread() {
   }
 }
 
-vector<string> split(string statement, char delimeter) {
-	vector<string> result;
-	string token;
-	for(int i=0; i<statement.length(); i++)
-  {
-    if(statement[i] != delimeter)
-      token += statement[i];
-    else if(token.length()) {
-      result.push_back(token);
-      token = "";
-    }
-  }
-	if(token.length())
-		result.push_back(token);
-
-	return result;
-}
 
 void middle_thread(long th_type) {
   while(true) {
@@ -298,15 +284,15 @@ void middle_thread(long th_type) {
       }
       sem_post(&comp_done[(int)th_type]);
       sem_post(&in_mid_sem[(int)th_type]);
-      sem_post(&w_mid_sem[(int)th_type]);
     }
     else {
+      if(turn != 0)
+        sem_wait(&out_done[(int)th_type]);
       for(int i = (int)th_type * (128/mid_th_num); i < 128; i++) {
         sum_list[(int)th_type] += (weights[i]*inputs[i]);
       }
       sem_post(&comp_done[(int)th_type]);
       sem_post(&in_mid_sem[(int)th_type]);
-      sem_post(&w_mid_sem[(int)th_type]);
     }
     if(input_complete)
       break;
@@ -319,6 +305,11 @@ while(true) {
     if(turn != 0)
       sem_wait(&comp_done[i]);
     result += sum_list[i];
+
+    ostringstream strs;
+    strs << result;
+    string str = strs.str();
+
     sem_post(&out_done[i]);
   }
   if(turn == 0) {
@@ -331,10 +322,10 @@ while(true) {
   ofstream outfile;
   outfile.open("outputs.txt", ios_base::app);
   ostringstream strs;
+  result = atan (result);
   strs << result;
   string str = strs.str();
   outfile << str << endl;
-
   result = 0;
   if(input_complete)
     break;
