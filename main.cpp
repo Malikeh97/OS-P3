@@ -485,7 +485,7 @@ void output_thread() {
 
   result = 0;
   if(input_complete && (col == col_done))
-    return;
+    exit(-1);
   turn = 1;
 }
 
