@@ -45,6 +45,10 @@ int mid_th_num;
 bool input_complete = false;
 double result = 0.0;
 int t = 0;
+int col = 0;
+int col_done = 0;
+int col_cal = 0;
+
 
 
 //flags
@@ -205,7 +209,7 @@ void input_thread() {
            else {
              string tmp = token;
              num = atof (tmp.c_str());
-             break;
+             col++;
            }
 
 
@@ -220,13 +224,17 @@ void input_thread() {
 
             inputs[count] = num;
 
-            sem_wait (&sem_terminal);//test
-            cout << "in:" << num << endl;//test
-            sem_post (&sem_terminal);//test
+            if (turn == 0) {
+              sem_wait (&sem_terminal);//test
+              // cout << "in:" << num << endl;//test
+              sem_post (&sem_terminal);//test
+            }
 
             if((count+1)%128 == 0) {
+
               data_ready[mid_th_num-1] = READY;
               sem_post(&data_r_mid_sem[mid_th_num-1]);
+
             }
 
             else if((count+1) % (128/mid_th_num) == 0) {
@@ -235,6 +243,9 @@ void input_thread() {
             }
             count = (count+1)%128;
             t = 1;
+            // cout << "$$$$$$$$$$$$$$$ " << count << endl;
+
+            if (count == 0) break;
           }
         }
         input_complete = true;
@@ -284,9 +295,9 @@ void weight_thread() {
               token = token.substr(token.find(',')+1);
             }
             else{
+
               string tmp = token;
               num = atof (tmp.c_str());
-              break;
             }
             if(count%(128/mid_th_num)==0 && (128-count>=(128/mid_th_num))) {
               while(true) {
@@ -299,12 +310,16 @@ void weight_thread() {
             weights[count] = num;
 
             sem_wait (&sem_terminal);//test
-            cout << "w:" << num << endl;//test
+            // cout << "w:" << num << endl;//test
             sem_post (&sem_terminal);//test
 
+
             if(count == 127) {
+
+
               weight_ready[mid_th_num-1] = READY;
               sem_post(&w_mid_sem[mid_th_num-1]);
+              break;
             }
 
             else if((count+1) % (128/mid_th_num) == 0) {
@@ -327,6 +342,7 @@ void weight_thread() {
 
 void middle_thread(long th_type) {
   int turn = 0;
+  int x = 0;
   while(true) {
     while(true) {
       sem_wait(&data_r_mid_sem[(int)th_type]);
@@ -334,6 +350,7 @@ void middle_thread(long th_type) {
         break;
       sem_post(&data_r_mid_sem[(int)th_type]);
     }
+
 
     if(turn == 0) {
       while(true) {
@@ -343,7 +360,18 @@ void middle_thread(long th_type) {
         sem_post(&w_mid_sem[(int)th_type]);
       }
     }
+
+    if (x == 0) {
+      sem_wait (&sem_terminal);
+      cout << "$$$ " << th_type << endl;
+      sem_post (&sem_terminal);
+    }
     if((int)th_type != mid_th_num-1) {
+      if (x == 0) {
+        sem_wait (&sem_terminal);
+        cout << "*** " << th_type << endl;
+        sem_post (&sem_terminal);
+      }
       if(turn != 0) {
         while(true) {
           sem_wait(&out_done[(int)th_type]);
@@ -353,11 +381,19 @@ void middle_thread(long th_type) {
         }
       }
 
+      if (x == 0) {
+        sem_wait (&sem_terminal);
+        cout << "*** " << th_type << endl;
+        sem_post (&sem_terminal);
+      }
+
+
+
       for(int i = (int)th_type * (128/mid_th_num); i < (th_type+1) * (128/mid_th_num); i++) {
         sum_list[(int)th_type] += (weights[i]*inputs[i]);
       }
       sem_wait (&sem_terminal);//test
-      cout << "sum_list" << (int)th_type << sum_list[(int)th_type] << endl;//test
+      // cout << "sum_list " << (int)th_type << " " << sum_list[(int)th_type] << endl;//test
       sem_post (&sem_terminal);//test
 
       data_ready[(int)th_type] = WAIT;
@@ -379,22 +415,32 @@ void middle_thread(long th_type) {
         sum_list[(int)th_type] += (weights[i]*inputs[i]);
       }
       sem_wait (&sem_terminal);//test
-      cout << "sum_list" << (int)th_type << sum_list[(int)th_type] << endl;//test
+      // cout << "sum_list" << (int)th_type << sum_list[(int)th_type] << endl;//test
+
+      // cout << "sum_list" << (int)th_type << sum_list[(int)th_type] << endl;//test
       sem_post (&sem_terminal);//test
 
       data_ready[(int) th_type] = WAIT;
       out_completed[(int)th_type] = false;
       computed[(int)th_type] = true;
+      col_cal++;
       sem_post(&out_done[(int)th_type]);
       sem_post(&data_r_mid_sem[(int)th_type]);
     }
-    if(input_complete)
+    // if (x == 0) {
+    //   sem_wait (&sem_terminal);
+    //   cout << th_type << " *** " << " " << "(" << sum_list[(int)th_type] << ")" << endl;
+    //   sem_post (&sem_terminal);
+    // }
+    if(input_complete && (col == col_cal))
       return;
     turn = 1;
+    x++;
   }
 
 }
 void output_thread() {
+  int x = 0;
   int turn = 0;
   while(true) {
     for(int i = 0; i < mid_th_num; i++) {
@@ -404,6 +450,11 @@ void output_thread() {
           break;
         sem_post(&out_done[i]);
         }
+        // if (x == 0) {
+        //   sem_wait (&sem_terminal);
+        //   cout << i << " $$$ " << " " << "(" << sum_list[i] << ")" << endl;
+        //   sem_post (&sem_terminal);
+        // }
         result += sum_list[i];
     }
     if(turn == 0) {
@@ -419,9 +470,12 @@ void output_thread() {
   outfile.open("outputs.txt", ios_base::app);
   ostringstream strs;
   result = atan (result);
+    cout << "### " << x << " " << result << endl;
+  x++;
   strs << result;
   string str = strs.str();
   outfile << str << endl;
+  col_done++;
   for(int i =0; i < mid_th_num; i++) {
     sum_list[i] = 0;
     computed[i] = false;
@@ -430,7 +484,7 @@ void output_thread() {
   }
 
   result = 0;
-  if(input_complete)
+  if(input_complete && (col == col_done))
     return;
   turn = 1;
 }
