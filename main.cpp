@@ -50,7 +50,6 @@ int col_done = 0;
 int col_cal = 0;
 
 
-
 //flags
 vector<int> data_ready;//1
 vector<int> weight_ready;//2
@@ -144,7 +143,6 @@ void *routine(void *thread_type) {
      sem_wait (&sem_terminal);
      cout << "LOG:Input-getter thread has been created." << endl;
      sem_post (&sem_terminal);
-     //sem_wait(&create_mids[0]);
      input_thread();
    }
 
@@ -152,8 +150,6 @@ void *routine(void *thread_type) {
      sem_wait (&sem_terminal);
      cout << "LOG:Weight-getter thread has been created." << endl;
      sem_post (&sem_terminal);
-     //sem_wait(&create_mids[1]);
-     //sem_post(&create_mids[0]);
      weight_thread();
    }
 
@@ -161,7 +157,6 @@ void *routine(void *thread_type) {
     sem_wait (&sem_terminal);
     cout << "LOG:Output thread has been created." << endl;
     sem_post (&sem_terminal);
-    //sem_post(&create_mids[create_mids.size()-1]);
     output_thread();
   }
 
@@ -169,8 +164,6 @@ void *routine(void *thread_type) {
      sem_wait (&sem_terminal);
      cout << "LOG:Middle thread " << th_type << " has been created." << endl;
      sem_post (&sem_terminal);
-     //sem_wait(&create_mids[(int)((long)th_type) + 2]);
-     //sem_post(&create_mids[(int)((long)th_type) + 1]);
      middle_thread(th_type);
    }
 
@@ -198,7 +191,7 @@ void input_thread() {
               turn = 1;
             }
 
-            if(token.find(',') != -1) {
+            if(token.find(',') != string::npos) {
               string tmp = token.substr(0,token.find(','));
               num = atof (tmp.c_str());
               token = token.substr(token.find(',')+1);
@@ -224,12 +217,6 @@ void input_thread() {
 
             inputs[count] = num;
 
-            if (turn == 0) {
-              sem_wait (&sem_terminal);//test
-              // cout << "in:" << num << endl;//test
-              sem_post (&sem_terminal);//test
-            }
-
             if((count+1)%128 == 0) {
 
               data_ready[mid_th_num-1] = READY;
@@ -243,8 +230,6 @@ void input_thread() {
             }
             count = (count+1)%128;
             t = 1;
-            // cout << "$$$$$$$$$$$$$$$ " << count << endl;
-
             if (count == 0) break;
           }
         }
@@ -279,10 +264,6 @@ void weight_thread() {
             }
             bias = atof (bias_str.c_str());
 
-            sem_wait (&sem_terminal);//test
-            cout << "b:" << bias << endl;//test
-            sem_post (&sem_terminal);//test
-
             b_ready = true;
             sem_post(&b_sem);
             continue;
@@ -309,14 +290,7 @@ void weight_thread() {
             }
             weights[count] = num;
 
-            sem_wait (&sem_terminal);//test
-            // cout << "w:" << num << endl;//test
-            sem_post (&sem_terminal);//test
-
-
             if(count == 127) {
-
-
               weight_ready[mid_th_num-1] = READY;
               sem_post(&w_mid_sem[mid_th_num-1]);
               break;
@@ -342,7 +316,6 @@ void weight_thread() {
 
 void middle_thread(long th_type) {
   int turn = 0;
-  int x = 0;
   while(true) {
     while(true) {
       sem_wait(&data_r_mid_sem[(int)th_type]);
@@ -361,17 +334,7 @@ void middle_thread(long th_type) {
       }
     }
 
-    if (x == 0) {
-      sem_wait (&sem_terminal);
-      cout << "$$$ " << th_type << endl;
-      sem_post (&sem_terminal);
-    }
     if((int)th_type != mid_th_num-1) {
-      if (x == 0) {
-        sem_wait (&sem_terminal);
-        cout << "*** " << th_type << endl;
-        sem_post (&sem_terminal);
-      }
       if(turn != 0) {
         while(true) {
           sem_wait(&out_done[(int)th_type]);
@@ -381,21 +344,9 @@ void middle_thread(long th_type) {
         }
       }
 
-      if (x == 0) {
-        sem_wait (&sem_terminal);
-        cout << "*** " << th_type << endl;
-        sem_post (&sem_terminal);
-      }
-
-
-
       for(int i = (int)th_type * (128/mid_th_num); i < (th_type+1) * (128/mid_th_num); i++) {
         sum_list[(int)th_type] += (weights[i]*inputs[i]);
       }
-      sem_wait (&sem_terminal);//test
-      // cout << "sum_list " << (int)th_type << " " << sum_list[(int)th_type] << endl;//test
-      sem_post (&sem_terminal);//test
-
       data_ready[(int)th_type] = WAIT;
       out_completed[(int)th_type] = false;
       computed[(int)th_type] = true;
@@ -414,11 +365,6 @@ void middle_thread(long th_type) {
       for(int i = (int)th_type * (128/mid_th_num); i < 128; i++) {
         sum_list[(int)th_type] += (weights[i]*inputs[i]);
       }
-      sem_wait (&sem_terminal);//test
-      // cout << "sum_list" << (int)th_type << sum_list[(int)th_type] << endl;//test
-
-      // cout << "sum_list" << (int)th_type << sum_list[(int)th_type] << endl;//test
-      sem_post (&sem_terminal);//test
 
       data_ready[(int) th_type] = WAIT;
       out_completed[(int)th_type] = false;
@@ -427,20 +373,13 @@ void middle_thread(long th_type) {
       sem_post(&out_done[(int)th_type]);
       sem_post(&data_r_mid_sem[(int)th_type]);
     }
-    // if (x == 0) {
-    //   sem_wait (&sem_terminal);
-    //   cout << th_type << " *** " << " " << "(" << sum_list[(int)th_type] << ")" << endl;
-    //   sem_post (&sem_terminal);
-    // }
     if(input_complete && (col == col_cal))
       return;
     turn = 1;
-    x++;
   }
 
 }
 void output_thread() {
-  int x = 0;
   int turn = 0;
   while(true) {
     for(int i = 0; i < mid_th_num; i++) {
@@ -450,11 +389,6 @@ void output_thread() {
           break;
         sem_post(&out_done[i]);
         }
-        // if (x == 0) {
-        //   sem_wait (&sem_terminal);
-        //   cout << i << " $$$ " << " " << "(" << sum_list[i] << ")" << endl;
-        //   sem_post (&sem_terminal);
-        // }
         result += sum_list[i];
     }
     if(turn == 0) {
@@ -470,8 +404,6 @@ void output_thread() {
   outfile.open("outputs.txt", ios_base::app);
   ostringstream strs;
   result = atan (result);
-    cout << "### " << x << " " << result << endl;
-  x++;
   strs << result;
   string str = strs.str();
   outfile << str << endl;
