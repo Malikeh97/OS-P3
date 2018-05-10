@@ -140,7 +140,7 @@ void *routine(void *thread_type) {
      sem_wait (&sem_terminal);
      cout << "LOG:Input-getter thread has been created." << endl;
      sem_post (&sem_terminal);
-     sem_wait(&create_mids[0]);
+     //sem_wait(&create_mids[0]);
      input_thread();
    }
 
@@ -148,8 +148,8 @@ void *routine(void *thread_type) {
      sem_wait (&sem_terminal);
      cout << "LOG:Weight-getter thread has been created." << endl;
      sem_post (&sem_terminal);
-     sem_wait(&create_mids[1]);
-     sem_post(&create_mids[0]);
+     //sem_wait(&create_mids[1]);
+     //sem_post(&create_mids[0]);
      weight_thread();
    }
 
@@ -157,7 +157,7 @@ void *routine(void *thread_type) {
     sem_wait (&sem_terminal);
     cout << "LOG:Output thread has been created." << endl;
     sem_post (&sem_terminal);
-    sem_post(&create_mids[create_mids.size()-1]);
+    //sem_post(&create_mids[create_mids.size()-1]);
     output_thread();
   }
 
@@ -165,8 +165,8 @@ void *routine(void *thread_type) {
      sem_wait (&sem_terminal);
      cout << "LOG:Middle thread " << th_type << " has been created." << endl;
      sem_post (&sem_terminal);
-     sem_wait(&create_mids[(int)((long)th_type) + 2]);
-     sem_post(&create_mids[(int)((long)th_type) + 1]);
+     //sem_wait(&create_mids[(int)((long)th_type) + 2]);
+     //sem_post(&create_mids[(int)((long)th_type) + 1]);
      middle_thread(th_type);
    }
 
@@ -194,10 +194,13 @@ void input_thread() {
               turn = 1;
             }
 
-            if(token.find(',') != string::npos) {
+            if(token.find(',') != -1) {
               string tmp = token.substr(0,token.find(','));
               num = atof (tmp.c_str());
               token = token.substr(token.find(',')+1);
+            }
+            else if(token.size()==0) {
+              break;
             }
            else {
              string tmp = token;
@@ -211,6 +214,7 @@ void input_thread() {
                 sem_wait(&data_r_mid_sem[(count+1)/(128/mid_th_num)]);
                 if(data_ready[(count+1)/(128/mid_th_num)] == WAIT)
                   break;
+                sem_post(&data_r_mid_sem[(count+1)/(128/mid_th_num)]);
               }
             }
 
@@ -250,15 +254,17 @@ void weight_thread() {
   string bias_str;
   int count = 0;
   if(w_file.is_open()) {
+    getline(w_file, line);
     while(getline(w_file, line)) {//test
           string token = line.substr(line.find('{')+1);
           token = token.substr(0,token.find('}'));
-          if((signed)token.find(':')!=-1){
+          if(token.find(':')!=string::npos){
             bias_str = token.substr(token.find(':')+1);
             while(true) {
               sem_wait(&b_sem);
               if(b_ready == false)
                 break;
+              sem_post(&b_sem);
             }
             bias = atof (bias_str.c_str());
 
@@ -287,6 +293,7 @@ void weight_thread() {
                 sem_wait(&w_mid_sem[(count+1)/(128/mid_th_num)]);
                 if(weight_ready[(count+1)/(128/mid_th_num)] == WAIT)
                   break;
+                sem_post(&w_mid_sem[(count+1)/(128/mid_th_num)]);
               }
             }
             weights[count] = num;
@@ -305,10 +312,6 @@ void weight_thread() {
               sem_post(&w_mid_sem[count/(128/mid_th_num)]);
             }
             count++;
-            // token = token.substr(token.find(',')+1);
-            // if((signed)token.find(',') == -1){
-            //   break;
-            // }
           }
         }
 
@@ -329,6 +332,7 @@ void middle_thread(long th_type) {
       sem_wait(&data_r_mid_sem[(int)th_type]);
       if(data_ready[(int)th_type] == READY)
         break;
+      sem_post(&data_r_mid_sem[(int)th_type]);
     }
 
     if(turn == 0) {
@@ -336,6 +340,7 @@ void middle_thread(long th_type) {
         sem_wait(&w_mid_sem[(int)th_type]);
         if(weight_ready[(int)th_type] == READY)
           break;
+        sem_post(&w_mid_sem[(int)th_type]);
       }
     }
     if((int)th_type != mid_th_num-1) {
@@ -344,6 +349,7 @@ void middle_thread(long th_type) {
           sem_wait(&out_done[(int)th_type]);
           if(out_completed[(int)th_type] == true && computed[(int)th_type] == false)
             break;
+          sem_post(&out_done[(int)th_type]);
         }
       }
 
@@ -362,6 +368,7 @@ void middle_thread(long th_type) {
           sem_wait(&out_done[(int)th_type]);
           if(out_completed[(int)th_type] == true && computed[(int)th_type] == false)
             break;
+          sem_post(&out_done[(int)th_type]);
         }
       }
       for(int i = (int)th_type * (128/mid_th_num); i < 128; i++) {
@@ -387,6 +394,7 @@ void output_thread() {
         sem_wait(&out_done[i]);
         if(computed[i] == true && out_completed[i] == false)
           break;
+        sem_post(&out_done[i]);
         }
         result += sum_list[i];
     }
@@ -395,6 +403,7 @@ void output_thread() {
       sem_wait(&b_sem);
       if(b_ready)
         break;
+      sem_post(&b_sem);
     }
   }
   result += bias;
