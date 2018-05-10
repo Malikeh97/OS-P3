@@ -209,12 +209,12 @@ void input_thread() {
            }
 
 
-            if((turn != 0) && ((count+1)%(128/mid_th_num)==1)) {
+            if((turn != 0) && (count%(128/mid_th_num)==0) && (128-count>=(128/mid_th_num))) {
               while(true) {
-                sem_wait(&data_r_mid_sem[(count+1)/(128/mid_th_num)]);
-                if(data_ready[(count+1)/(128/mid_th_num)] == WAIT)
+                sem_wait(&data_r_mid_sem[count/(128/mid_th_num)]);
+                if(data_ready[count/(128/mid_th_num)] == WAIT)
                   break;
-                sem_post(&data_r_mid_sem[(count+1)/(128/mid_th_num)]);
+                sem_post(&data_r_mid_sem[count/(128/mid_th_num)]);
               }
             }
 
@@ -288,12 +288,12 @@ void weight_thread() {
               num = atof (tmp.c_str());
               break;
             }
-            if((count+1)%(128/mid_th_num)==1) {
+            if(count%(128/mid_th_num)==0 && (128-count>=(128/mid_th_num))) {
               while(true) {
-                sem_wait(&w_mid_sem[(count+1)/(128/mid_th_num)]);
-                if(weight_ready[(count+1)/(128/mid_th_num)] == WAIT)
+                sem_wait(&w_mid_sem[count/(128/mid_th_num)]);
+                if(weight_ready[count/(128/mid_th_num)] == WAIT)
                   break;
-                sem_post(&w_mid_sem[(count+1)/(128/mid_th_num)]);
+                sem_post(&w_mid_sem[count/(128/mid_th_num)]);
               }
             }
             weights[count] = num;
@@ -356,6 +356,10 @@ void middle_thread(long th_type) {
       for(int i = (int)th_type * (128/mid_th_num); i < (th_type+1) * (128/mid_th_num); i++) {
         sum_list[(int)th_type] += (weights[i]*inputs[i]);
       }
+      sem_wait (&sem_terminal);//test
+      cout << "sum_list" << (int)th_type << sum_list[(int)th_type] << endl;//test
+      sem_post (&sem_terminal);//test
+
       data_ready[(int)th_type] = WAIT;
       out_completed[(int)th_type] = false;
       computed[(int)th_type] = true;
@@ -374,6 +378,10 @@ void middle_thread(long th_type) {
       for(int i = (int)th_type * (128/mid_th_num); i < 128; i++) {
         sum_list[(int)th_type] += (weights[i]*inputs[i]);
       }
+      sem_wait (&sem_terminal);//test
+      cout << "sum_list" << (int)th_type << sum_list[(int)th_type] << endl;//test
+      sem_post (&sem_terminal);//test
+
       data_ready[(int) th_type] = WAIT;
       out_completed[(int)th_type] = false;
       computed[(int)th_type] = true;
