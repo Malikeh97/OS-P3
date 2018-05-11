@@ -1,7 +1,7 @@
 all: neuron
 
-neuron: main.cpp
-	g++ main.cpp -o neuron -lpthread
+neuron: parallel.cpp
+	g++ parallel.cpp -o neuron -lpthread
 
 clean:
 	rm *.o neuron
